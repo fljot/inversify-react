@@ -1,6 +1,10 @@
-import { ComponentClass, Component } from 'react';
+import { ComponentClass, Component, createContext } from 'react';
 import * as PropTypes from 'prop-types';
 import { interfaces, Container } from 'inversify';
+
+type InversifyReactContextValue = interfaces.Container | undefined;
+const InversifyReactContext = createContext<InversifyReactContextValue>(undefined);
+InversifyReactContext.displayName = 'InversifyReactContext';
 
 const ReactContextKey = "container";
 const AdministrationKey = "~$inversify-react"; // no ES6 WeakMap because we target ES5 to support more browsers
@@ -66,7 +70,7 @@ function getInstanceAdministration(target: any) {
 	if (!administration) {
 		let classAdministration: DiClassAdministration = target.constructor[AdministrationKey];
 
-		const parentContainer = (target.context && target.context[ReactContextKey]) as interfaces.Container | null;
+		const parentContainer = target.context as InversifyReactContextValue;
 
 		let container: interfaces.Container;
 		if (classAdministration.provides) {
@@ -121,19 +125,12 @@ function ensureAcceptContext(target: ComponentClass) {
 
 	if (administration.accepts) {
 		// class already accepts react context
-
 		return;
 	}
 
-	// accept react context
-	if (!target.contextTypes) {
-		target.contextTypes = {};
-	}
-
-	if (!target.contextTypes[ReactContextKey]) {
-		target.contextTypes[ReactContextKey] = PropTypes.object;
-	}
-
+	// TODO:#review: do we really need to guard it?
+	//  do we need `DiClassAdministration.accepts` at all?
+	target.contextType = InversifyReactContext;
 	administration.accepts = true;
 }
 
@@ -223,6 +220,7 @@ function createProperty(target: Component, name: string, type: interfaces.Servic
 }
 
 export {
+	InversifyReactContext,
 	ReactContextKey, AdministrationKey,
 	ServiceDescriptor,
 	ProvideBindingScope,
