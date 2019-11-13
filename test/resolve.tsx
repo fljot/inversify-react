@@ -1,9 +1,10 @@
 import * as React from 'react';
+import { useState } from 'react';
 import 'reflect-metadata';
 import { injectable, Container } from 'inversify';
-
-import { provide, resolve, Provider } from '../src/index';
 import * as renderer from 'react-test-renderer';
+
+import { resolve, Provider } from '../src';
 
 @injectable()
 class Foo { 
@@ -19,17 +20,19 @@ class Bar {
     }
 }
 
-class RootComponent extends React.Component<{}, {}> {
-    @provide
-    private readonly foo: Foo;
-
-    @provide
-    private readonly bar: Bar;
-
-    render() {
-        return <div data-foo={this.foo.name} data-bar={this.bar.name}>{this.props.children}</div>;
-    }
-}
+const RootComponent: React.FC = ({ children }) => {
+    const [container] = useState(() => {
+        const c = new Container();
+        c.bind(Foo).toSelf();
+        c.bind(Bar).toSelf();
+        return c;
+    });
+    return (
+        <Provider container={container}>
+            <div>{children}</div>
+        </Provider>
+    );
+};
 
 test('resolve using reflect metadata', () => {
     class ChildComponent extends React.Component<{}, {}> {
@@ -115,25 +118,19 @@ test('resolve using service identifier (newable)', () => {
             <ChildComponent />
         </RootComponent>
     ).toJSON();
-    
+
     expect(tree.type).toBe('div');
     expect(tree.children[0].type).toBe('div');
     expect(tree.children[0].children).toEqual(['foo']);
 });
 
 test('resolve optional using reflect metadata', () => {
-    class RootComponent extends React.Component<{}, {}> {
-        @provide
-        private readonly foo: Foo;
-    
-        render() {
-            return <div data-foo={this.foo.name}>{this.props.children}</div>;
-        }
-    }
+    const container = new Container();
+    container.bind(Foo).toSelf();
 
     class ChildComponent extends React.Component<{}, {}> {
         @resolve.optional
-        private readonly foo: Foo;
+        private readonly foo?: Foo;
 
         @resolve.optional
         private readonly bar?: Bar;
@@ -144,14 +141,13 @@ test('resolve optional using reflect metadata', () => {
     }
 
     const tree: any = renderer.create(
-        <RootComponent>
+        <Provider container={container}>
             <ChildComponent />
-        </RootComponent>
+        </Provider>
     ).toJSON();
 
     expect(tree.type).toBe('div');
-    expect(tree.children[0].type).toBe('div');
-    expect(tree.children[0].children).toEqual(['foo']);
+    expect(tree.children).toEqual(['foo']);
 });
 
 test('resolve optional using service identifier (string)', () => {
@@ -210,14 +206,8 @@ test('resolve optional using service identifier (symbol)', () => {
 });
 
 test('resolve optional using service identifier (newable)', () => {
-    class RootComponent extends React.Component<{}, {}> {
-        @provide
-        private readonly foo: Foo;
-    
-        render() {
-            return <div data-foo={this.foo.name}>{this.props.children}</div>;
-        }
-    }
+    const container = new Container();
+    container.bind(Foo).toSelf();
 
     class ChildComponent extends React.Component<{}, {}> {
         @resolve.optional(Foo)
@@ -232,12 +222,11 @@ test('resolve optional using service identifier (newable)', () => {
     }
 
     const tree: any = renderer.create(
-        <RootComponent>
+        <Provider container={container}>
             <ChildComponent />
-        </RootComponent>
+        </Provider>
     ).toJSON();
-    
+
     expect(tree.type).toBe('div');
-    expect(tree.children[0].type).toBe('div');
-    expect(tree.children[0].children).toEqual(['foo']);
+    expect(tree.children).toEqual(['foo']);
 });
