@@ -28,6 +28,14 @@ Or check why container has already parent and if you should unset it?
 type ProviderProps = Readonly<{
 	container: interfaces.Container;
 	standalone?: boolean;
+
+	// TODO:#review: more callbacks?
+	//  `onReady: (container: interfaces.Container) => void`
+	//  before first render, but when hierarchy is already setup (to preinit something?)
+	//  &
+	//  onParent?: (self: interfaces.Container, parent: interfaces.Container) => interfaces.Container
+	//  middleware-like behavior where we could intercept parent container (which resolved from React context) and
+	//  interfere with hierarchy?
 }>;
 
 const Provider: React.FC<ProviderProps> = ({ children, container, standalone = false }) => {
