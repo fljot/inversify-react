@@ -70,3 +70,36 @@ test('provider provides services to deep children', () => {
     expect(tree.children[0].children[0].type).toBe('div');
     expect(tree.children[0].children[0].children).toEqual(['foo']);
 });
+
+describe('hierarchy of containers', () => {
+    test('providers make hierarchy of containers by default', () => {
+        const outerContainer = new Container();
+        outerContainer.bind(Foo).toSelf();
+        const innerContainer = new Container();
+
+        const tree: any = renderer.create(
+            <Provider container={outerContainer}>
+                <Provider container={innerContainer}>
+                    <ChildComponent />
+                </Provider>
+            </Provider>
+        ).toJSON();
+
+        expect(innerContainer.parent).toBe(outerContainer);
+        expect(tree.type).toBe('div');
+        expect(tree.children).toEqual(['foo']); // value from outer container
+    });
+
+    test(`"standalone" provider isolates container`, () => {
+        const outerContainer = new Container();
+        const innerContainer = new Container();
+
+        renderer.create(
+            <Provider container={outerContainer}>
+                <Provider container={innerContainer} standalone={true} />
+            </Provider>
+        ).toJSON();
+
+        expect(innerContainer.parent).toBeNull();
+    });
+});
