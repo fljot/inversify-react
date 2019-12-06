@@ -3,11 +3,12 @@ import * as PropTypes from 'prop-types';
 import { interfaces, Container } from 'inversify';
 
 const ReactContextKey = "container";
-const AdministrationKey = "~$inversify-react";
+const AdministrationKey = "~$inversify-react"; // no ES6 WeakMap because we target ES5 to support more browsers
+// TODO:#review: maybe `lib` in tsconfig + polyfill instead? would be nicer DX!.. it's almost 2020 :)
 
 interface ServiceDescriptor {
 	scope: interfaces.BindingScope;
-	service: interfaces.ServiceIdentifier<any>;
+	service: interfaces.ServiceIdentifier<unknown>;
 }
 
 interface DiClassAdministration {
@@ -56,7 +57,7 @@ function getClassAdministration(target: any) {
 }
 
 function getInstanceAdministration(target: any) {
-	let administration: DiInstanceAdministration = target[AdministrationKey];
+	let administration: DiInstanceAdministration | undefined = target[AdministrationKey];
 
 	if (!administration) {
 		let classAdministration: DiClassAdministration = target.constructor[AdministrationKey];
@@ -68,16 +69,16 @@ function getInstanceAdministration(target: any) {
 			container = new Container();
 
 			for (const service of classAdministration.services) {
-				const bindingInWhenOnSytax = container.bind(service.service)
+				const bindingInWhenOnSyntax = container.bind(service.service)
 					.toSelf();
 
 				switch (service.scope) {
 					case 'Singleton':
-						bindingInWhenOnSytax.inSingletonScope();
+						bindingInWhenOnSyntax.inSingletonScope();
 						break;
 
 					case 'Transient':
-						bindingInWhenOnSytax.inTransientScope();
+						bindingInWhenOnSyntax.inTransientScope();
 						break;
 
 					default:
@@ -110,7 +111,7 @@ function getInstanceAdministration(target: any) {
 	return administration;
 }
 
-function ensureAcceptContext<P>(target: ComponentClass<P>) {
+function ensureAcceptContext(target: ComponentClass) {
 	const administration = getClassAdministration(target);
 
 	if (administration.accepts) {
@@ -131,7 +132,7 @@ function ensureAcceptContext<P>(target: ComponentClass<P>) {
 	administration.accepts = true;
 }
 
-function ensureProvideContext<P, T>(target: ComponentClass<P>, service: interfaces.ServiceIdentifier<T>, scope: interfaces.BindingScope = 'Singleton') {
+function ensureProvideContext(target: ComponentClass, service: interfaces.ServiceIdentifier<unknown>, scope: interfaces.BindingScope = 'Singleton') {
 	const administration = getClassAdministration(target);
 
 	// provide the service if not already registered
@@ -169,7 +170,7 @@ function ensureProvideContext<P, T>(target: ComponentClass<P>, service: interfac
 	administration.provides = true;
 }
 
-function getContainer<P>(target: Component<P, any>) {
+function getContainer(target: Component) {
 	return getInstanceAdministration(target).container;
 }
 
@@ -178,7 +179,7 @@ interface PropertyOptions {
 	defaultValue?: any;
 }
 
-function createProperty<P>(target: Component<P, any>, name: string, type: interfaces.ServiceIdentifier<any>, options: PropertyOptions) {
+function createProperty(target: Component, name: string, type: interfaces.ServiceIdentifier<unknown>, options: PropertyOptions) {
 	Object.defineProperty(target, name, {
 		enumerable: true,
 		get() {
@@ -186,20 +187,20 @@ function createProperty<P>(target: Component<P, any>, name: string, type: interf
 			let getter = administration.properties[name];
 
 			if (!getter) {
-				const container = getContainer(this);
+				const { container } = administration;
 
-				let value: any;
+				let value: unknown;
 				if (options.isOptional)
 				{
 					if (container.isBound(type)) {
-						value = getContainer(this).get(type);
+						value = container.get(type);
 					} else {
 						value = options.defaultValue;
 					}
 				}
 				else
 				{
-					value = getContainer(this).get(type);
+					value = container.get(type);
 				}
 
 				getter = administration.properties[name] = () => value;
