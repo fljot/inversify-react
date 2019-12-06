@@ -1,12 +1,10 @@
 import { ComponentClass, Component, createContext } from 'react';
-import * as PropTypes from 'prop-types';
 import { interfaces, Container } from 'inversify';
 
 type InversifyReactContextValue = interfaces.Container | undefined;
 const InversifyReactContext = createContext<InversifyReactContextValue>(undefined);
 InversifyReactContext.displayName = 'InversifyReactContext';
 
-const ReactContextKey = "container";
 const AdministrationKey = "~$inversify-react"; // no ES6 WeakMap because we target ES5 to support more browsers
 // TODO:#review: maybe `lib` in tsconfig + polyfill instead? would be nicer DX!.. it's almost 2020 :)
 
@@ -30,22 +28,11 @@ interface DiInstanceAdministration {
 	container: interfaces.Container;
 
 	properties: { [key: string]: () => any };
-}
-
-function findByService(services: ServiceDescriptor[], service: interfaces.ServiceIdentifier<any>) {
-	for (const descriptor of services) {
-		if (descriptor.service !== service) {
-			continue;
-		}
-
-		return descriptor;
-	}
-
-	return null;
+	provides: boolean;
 }
 
 function getClassAdministration(target: any) {
-	let administration: DiClassAdministration = (target as any)[AdministrationKey];
+	let administration: DiClassAdministration | undefined = target[AdministrationKey];
 
 	if (!administration) {
 		administration = {
@@ -72,42 +59,56 @@ function getInstanceAdministration(target: any) {
 
 		const parentContainer = target.context as InversifyReactContextValue;
 
-		let container: interfaces.Container;
-		if (classAdministration.provides) {
-			container = new Container();
+		// we resolve container using 2 strategies:
+		// either own container gets created for @provide-ed services,
+		// or we find one on React context;
+		// lazy container allows us to collect all @provide meta first, then bind all
+		// TODO:#review: just to clarify: before `getInstanceAdministration` wasn't used in @provide,
+		//  but only at the time of resolving;
+		//  with new implementation @provide uses new prop `DiInstanceAdministration.provides`, so we defer container
+		let container: interfaces.Container | undefined;
+		const resolveContainer = (): interfaces.Container => container || (() => {
+			if (classAdministration.provides) {
+				container = new Container();
 
-			for (const service of classAdministration.services) {
-				const bindingInWhenOnSyntax = container.bind(service.service)
-					.toSelf();
+				for (const service of classAdministration.services) {
+					const bindingInWhenOnSyntax = container.bind(service.service)
+						.toSelf();
 
-				switch (service.scope) {
-					case 'Singleton':
-						bindingInWhenOnSyntax.inSingletonScope();
-						break;
+					switch (service.scope) {
+						case 'Singleton':
+							bindingInWhenOnSyntax.inSingletonScope();
+							break;
 
-					case 'Transient':
-						bindingInWhenOnSyntax.inTransientScope();
-						break;
+						case 'Transient':
+							bindingInWhenOnSyntax.inTransientScope();
+							break;
 
-					default:
-						const exhaustive: never = service.scope;
-						throw new Error(`Invalid service scope '${service.scope}'`);
+						default:
+							const exhaustive: never = service.scope;
+							throw new Error(`Invalid service scope '${service.scope}'`);
+					}
 				}
-			}
 
-			if (parentContainer) {
-				container.parent = parentContainer;
+				if (parentContainer) {
+					container.parent = parentContainer;
+				}
+			} else {
+				if (!parentContainer) {
+					throw new Error('Cannot use resolve services without any providers in component tree.');
+				}
+				container = parentContainer;
 			}
-		} else {
-			if (!parentContainer) {
-				throw new Error('Cannot use resolve services without any providers in component tree.');
-			}
-			container = parentContainer;
-		}
+			return container;
+		})();
+
 
 		administration = {
-			container: container,
-			properties: {}
+			provides: false,
+			get container(): interfaces.Container {
+				return resolveContainer();
+			},
+			properties: {},
 		};
 
 		Object.defineProperty(target, AdministrationKey, {
@@ -132,44 +133,6 @@ function ensureAcceptContext(target: ComponentClass) {
 	//  do we need `DiClassAdministration.accepts` at all?
 	target.contextType = InversifyReactContext;
 	administration.accepts = true;
-}
-
-function ensureProvideContext(target: ComponentClass, service: interfaces.ServiceIdentifier<unknown>, scope: ProvideBindingScope = 'Singleton') {
-	const administration = getClassAdministration(target);
-
-	// provide the service if not already registered
-	if (!findByService(administration.services, service)) {
-		administration.services.push({ service, scope });
-	}
-
-	if (administration.provides) {
-		// class already provides react context
-		return;
-	}
-
-	// provide react context
-	if (!target.childContextTypes) {
-		target.childContextTypes = {};
-	}
-
-	if (!target.childContextTypes[ReactContextKey]) {
-		target.childContextTypes[ReactContextKey] = PropTypes.object.isRequired;
-	}
-
-	const originalGetChildContext = target.prototype.getChildContext;
-	target.prototype.getChildContext = function getChildContext() {
-		let context = originalGetChildContext ? originalGetChildContext.call(this) : {};
-
-		if (!context) {
-			context = {};
-		}
-
-		context[ReactContextKey] = getContainer(this);
-
-		return context;
-	};
-
-	administration.provides = true;
 }
 
 function getContainer(target: Component) {
@@ -221,12 +184,11 @@ function createProperty(target: Component, name: string, type: interfaces.Servic
 
 export {
 	InversifyReactContext,
-	ReactContextKey, AdministrationKey,
+	AdministrationKey,
 	ServiceDescriptor,
 	ProvideBindingScope,
 	DiClassAdministration, DiInstanceAdministration,
 	ensureAcceptContext,
-	ensureProvideContext, 
 	getContainer, createProperty, PropertyOptions,
-	getClassAdministration, getInstanceAdministration, 
+	getClassAdministration, getInstanceAdministration,
 };
