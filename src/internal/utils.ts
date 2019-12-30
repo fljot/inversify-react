@@ -28,7 +28,6 @@ interface DiInstanceAdministration {
 	container: interfaces.Container;
 
 	properties: { [key: string]: () => any };
-	provides: boolean;
 }
 
 function getClassAdministration(target: any) {
@@ -104,7 +103,6 @@ function getInstanceAdministration(target: any) {
 
 
 		administration = {
-			provides: false,
 			get container(): interfaces.Container {
 				return resolveContainer();
 			},
